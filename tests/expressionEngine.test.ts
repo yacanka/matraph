@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   generateGraph,
   mapToFrequencies,
+  normalizeExpression,
   validateExpression,
   validateGraphConfig,
 } from '../src/services/expressionEngine';
@@ -9,6 +10,25 @@ import {
 describe('expressionEngine', () => {
   it('validates forbidden token', () => {
     expect(() => validateExpression('import("x")')).toThrow();
+  });
+
+  it('normalizes calculator-like symbols', () => {
+    const result = normalizeExpression('|sin(z)| + √(z^2) + π × z ÷ 2');
+    expect(result).toBe('abs(sin(z)) + sqrt(z^2) + pi * z / 2');
+  });
+
+  it('rejects unbalanced absolute bars', () => {
+    expect(() => normalizeExpression('|z + 1')).toThrow('Unbalanced absolute value bars.');
+  });
+
+  it('expands sigma notation to finite sum', () => {
+    const result = normalizeExpression('∑(1,3,n^2)');
+    expect(result).toBe('((1^2) + (2^2) + (3^2))');
+  });
+
+  it('calculates finite sum in graph generation', () => {
+    const points = generateGraph('∑(1,3,n*z)', { sampleCount: 2, domainStart: 2, domainEnd: 2.5 });
+    expect(points[0].y).toBe(12);
   });
 
   it('validates graph configuration range', () => {
