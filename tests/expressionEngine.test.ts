@@ -35,6 +35,13 @@ describe('expressionEngine', () => {
     expect(() => validateGraphConfig({ sampleCount: 4, domainStart: -2, domainEnd: 2 })).toThrow();
   });
 
+
+  it('preserves negative values for real-valued expressions', () => {
+    const points = generateGraph('sin(z)', { sampleCount: 3, domainStart: -1.5707963, domainEnd: 1.5707963 });
+    expect(points[0].y).toBeLessThan(0);
+    expect(points[2].y).toBeGreaterThan(0);
+  });
+
   it('generates graph points with custom config', () => {
     const points = generateGraph('sin(z)', { sampleCount: 64, domainStart: -2, domainEnd: 2 });
     expect(points.length).toBe(64);

@@ -54,10 +54,15 @@ const quickTokens = ['sin()', 'cos()', 'tan()', 'sqrt()', '√()', 'log()', 'abs
 
 const svgPoints = computed(() => {
   if (points.value.length === 0) return '';
-  const maxY = Math.max(...points.value.map((point) => point.y), 1);
-  return points.value
-    .map((point, index) => `${(index / (points.value.length - 1)) * 800},${300 - (point.y / maxY) * 280}`)
-    .join(' ');
+  const yValues = points.value.map((point) => point.y);
+  const minY = Math.min(...yValues);
+  const maxY = Math.max(...yValues);
+  const span = maxY - minY || 1;
+  return points.value.map((point, index) => {
+    const x = (index / (points.value.length - 1)) * 800;
+    const y = 300 - ((point.y - minY) / span) * 280;
+    return `${x},${y}`;
+  }).join(' ');
 });
 
 function insertToken(token: string): void {
