@@ -1,7 +1,14 @@
 import { Complex, abs, compile, complex } from 'mathjs';
-import type { GraphPoint } from '../types/graph';
+import type { GraphConfig, GraphPoint } from '../types/graph';
 
 const MAX_EXPRESSION_LENGTH = 180;
+const MIN_SAMPLES = 16;
+const MAX_SAMPLES = 4096;
+const DEFAULT_CONFIG: GraphConfig = {
+  sampleCount: 256,
+  domainStart: -10,
+  domainEnd: 10,
+};
 
 /** Validate expression and reject unsafe patterns. */
 export function validateExpression(expression: string): void {
@@ -12,13 +19,33 @@ export function validateExpression(expression: string): void {
   }
 }
 
-/** Build plot points by evaluating expression on x-axis. */
-export function generateGraph(expression: string, samples = 256): GraphPoint[] {
+/** Validate graph configuration values. */
+export function validateGraphConfig(config: GraphConfig): void {
+  if (!Number.isInteger(config.sampleCount)) {
+    throw new Error('Sample count must be an integer.');
+  }
+  if (config.sampleCount < MIN_SAMPLES || config.sampleCount > MAX_SAMPLES) {
+    throw new Error(`Sample count must be between ${MIN_SAMPLES} and ${MAX_SAMPLES}.`);
+  }
+  if (!Number.isFinite(config.domainStart) || !Number.isFinite(config.domainEnd)) {
+    throw new Error('Domain values must be finite numbers.');
+  }
+  if (config.domainStart >= config.domainEnd) {
+    throw new Error('Domain start must be smaller than domain end.');
+  }
+}
+
+/** Build plot points by evaluating expression on the selected domain. */
+export function generateGraph(expression: string, config?: Partial<GraphConfig>): GraphPoint[] {
   validateExpression(expression);
+  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  validateGraphConfig(finalConfig);
   const compiled = compile(expression);
   const points: GraphPoint[] = [];
-  for (let index = 0; index < samples; index += 1) {
-    const xValue = -10 + (index * 20) / (samples - 1);
+  const interval = finalConfig.domainEnd - finalConfig.domainStart;
+  for (let index = 0; index < finalConfig.sampleCount; index += 1) {
+    const ratio = index / (finalConfig.sampleCount - 1);
+    const xValue = finalConfig.domainStart + interval * ratio;
     const complexResult = compiled.evaluate({ z: complex(xValue, 0) }) as Complex;
     points.push({ x: xValue, y: abs(complexResult) });
   }
