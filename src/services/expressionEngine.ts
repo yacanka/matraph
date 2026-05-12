@@ -79,13 +79,77 @@ function mapAbsolutePart(part: string, index: number, totalParts: number): strin
 }
 
 function expandSummation(expression: string): string {
-  const sumPattern = /sumN\(([^,]+),([^,]+),(.+?)\)/;
-  const match = expression.match(sumPattern);
-  if (!match) return expression;
-  const start = Number(match[1].trim());
-  const end = Number(match[2].trim());
-  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) throw new Error('sumN requires integer range: sumN(start,end,expression).');
-  const term = match[3].trim();
-  const expanded = Array.from({ length: end - start + 1 }, (_, i) => `(${term.replaceAll('n', String(start + i))})`).join(' + ');
-  return expression.replace(sumPattern, `(${expanded})`);
+  const firstIndex = expression.indexOf('sumN(');
+  if (firstIndex < 0) return expression;
+  const parsed = parseSummationAt(expression, firstIndex);
+  const expandedTerm = expandSummation(parsed.term);
+  const terms = createSummationTerms(parsed.start, parsed.end, expandedTerm);
+  const expanded = `(${terms.join(' + ')})`;
+  return expression.slice(0, firstIndex) + expanded + expandSummation(expression.slice(parsed.nextIndex));
 }
+
+function parseSummationAt(expression: string, startIndex: number): ParsedSummation {
+  const innerText = readEnclosedText(expression, startIndex + 4);
+  const args = splitTopLevelArgs(innerText.content);
+  if (args.length !== 3) throw new Error('sumN requires format: sumN(start,end,expression).');
+  const start = Number(args[0].trim());
+  const end = Number(args[1].trim());
+  validateSummationBounds(start, end);
+  return { start, end, term: args[2].trim(), nextIndex: innerText.nextIndex };
+}
+
+function readEnclosedText(expression: string, openParenIndex: number): ReadResult {
+  if (expression[openParenIndex] !== '(') throw new Error('sumN requires format: sumN(start,end,expression).');
+  let depth = 1;
+  for (let index = openParenIndex + 1; index < expression.length; index += 1) {
+    if (expression[index] === '(') depth += 1;
+    if (expression[index] === ')') depth -= 1;
+    if (depth === 0) return { content: expression.slice(openParenIndex + 1, index), nextIndex: index + 1 };
+  }
+  throw new Error('sumN has unbalanced parentheses.');
+}
+
+function splitTopLevelArgs(content: string): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let partStart = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === '(') depth += 1;
+    else if (content[index] === ')') depth -= 1;
+    else if (content[index] === ',' && depth === 0) {
+      args.push(content.slice(partStart, index));
+      partStart = index + 1;
+    }
+  }
+  args.push(content.slice(partStart));
+  return args;
+}
+
+function createSummationTerms(start: number, end: number, term: string): string[] {
+  return Array.from({ length: end - start + 1 }, (_, offset) => {
+    const termValue = start + offset;
+    return `(${replaceSummationVariable(term, termValue)})`;
+  });
+}
+
+function replaceSummationVariable(term: string, termValue: number): string {
+  return term.replace(/\bn\b/g, String(termValue));
+}
+
+function validateSummationBounds(start: number, end: number): void {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) {
+    throw new Error('sumN requires integer range: sumN(start,end,expression).');
+  }
+}
+
+type ReadResult = {
+  content: string;
+  nextIndex: number;
+};
+
+type ParsedSummation = {
+  start: number;
+  end: number;
+  term: string;
+  nextIndex: number;
+};

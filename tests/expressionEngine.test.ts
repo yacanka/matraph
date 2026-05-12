@@ -26,8 +26,19 @@ describe('expressionEngine', () => {
     expect(result).toBe('((1^2) + (2^2) + (3^2))');
   });
 
+
+  it('supports nested summation expressions safely', () => {
+    const result = normalizeExpression('sumN(1,2,sumN(1,2,n*z))');
+    expect(result).toBe('((((1*z) + (2*z))) + (((1*z) + (2*z))))');
+  });
+
+  it('does not replace characters inside longer identifiers', () => {
+    const result = normalizeExpression('sumN(1,2,sin(n)+tan(z))');
+    expect(result).toBe('((sin(1)+tan(z)) + (sin(2)+tan(z)))');
+  });
+
   it('calculates finite sum in graph generation', () => {
-    const points = generateGraph('∑(1,3,n*z)', { sampleCount: 2, domainStart: 2, domainEnd: 2.5 });
+    const points = generateGraph('∑(1,3,n*z)', { sampleCount: 16, domainStart: 2, domainEnd: 2.5 });
     expect(points[0].y).toBe(12);
   });
 
@@ -37,9 +48,9 @@ describe('expressionEngine', () => {
 
 
   it('preserves negative values for real-valued expressions', () => {
-    const points = generateGraph('sin(z)', { sampleCount: 3, domainStart: -1.5707963, domainEnd: 1.5707963 });
+    const points = generateGraph('sin(z)', { sampleCount: 16, domainStart: -1.5707963, domainEnd: 1.5707963 });
     expect(points[0].y).toBeLessThan(0);
-    expect(points[2].y).toBeGreaterThan(0);
+    expect(points[15].y).toBeGreaterThan(0);
   });
 
   it('generates graph points with custom config', () => {
