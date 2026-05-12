@@ -5,11 +5,7 @@ const MAX_EXPRESSION_LENGTH = 500;
 const MIN_SAMPLES = 16;
 const MAX_SAMPLES = 4096;
 const COMPLEX_EPSILON = 1e-8;
-const DEFAULT_CONFIG: GraphConfig = {
-  sampleCount: 256,
-  domainStart: -10,
-  domainEnd: 10,
-};
+const DEFAULT_CONFIG: GraphConfig = { sampleCount: 256, domainStart: -10, domainEnd: 10 };
 
 /** Normalize user input into mathjs-compatible syntax. */
 export function normalizeExpression(rawExpression: string): string {
@@ -37,13 +33,24 @@ export function validateGraphConfig(config: GraphConfig): void {
   if (config.domainStart >= config.domainEnd) throw new Error('Domain start must be smaller than domain end.');
 }
 
-/** Build plot points by evaluating expression on the selected domain. */
+/** Build plot points by evaluating y=f(z) on the selected domain. */
 export function generateGraph(expression: string, config?: Partial<GraphConfig>): GraphPoint[] {
   const normalizedExpression = normalizeExpression(expression);
   validateExpression(normalizedExpression);
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
   validateGraphConfig(finalConfig);
-  return buildGraphPoints(compile(normalizedExpression), finalConfig);
+  return buildGraphPoints(compile(normalizedExpression) as CompiledExpression, finalConfig);
+}
+
+/** Build plot points by evaluating parametric x(t), y(t) on the selected domain. */
+export function generateParametricGraph(xExpression: string, yExpression: string, config?: Partial<GraphConfig>): GraphPoint[] {
+  const normalizedX = normalizeExpression(xExpression);
+  const normalizedY = normalizeExpression(yExpression);
+  validateExpression(normalizedX);
+  validateExpression(normalizedY);
+  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  validateGraphConfig(finalConfig);
+  return buildParametricPoints(compile(normalizedX) as CompiledExpression, compile(normalizedY) as CompiledExpression, finalConfig);
 }
 
 /** Convert graph points to normalized audio frequencies. */
@@ -53,16 +60,24 @@ export function mapToFrequencies(points: GraphPoint[]): number[] {
   return values.map((value) => 220 + (value / maxValue) * 660);
 }
 
-function buildGraphPoints(compiled: ReturnType<typeof compile>, config: GraphConfig): GraphPoint[] {
-  const interval = config.domainEnd - config.domainStart;
-  return Array.from({ length: config.sampleCount }, (_, index) => {
-    const xValue = config.domainStart + (interval * index) / (config.sampleCount - 1);
-    const result = compiled.evaluate({ z: complex(xValue, 0) }) as Complex;
-    return { x: xValue, y: toGraphValue(result) };
+function buildGraphPoints(compiled: CompiledExpression, config: GraphConfig): GraphPoint[] {
+  return createSamples(config).map((sample) => ({ x: sample, y: toGraphValue(compiled.evaluate({ z: complex(sample, 0) }) as Complex) }));
+}
+
+function buildParametricPoints(compiledX: CompiledExpression, compiledY: CompiledExpression, config: GraphConfig): GraphPoint[] {
+  return createSamples(config).map((sample) => {
+    const scope = { t: complex(sample, 0), z: complex(sample, 0) };
+    return { x: toGraphValue(compiledX.evaluate(scope) as Complex), y: toGraphValue(compiledY.evaluate(scope) as Complex) };
   });
 }
 
-function toGraphValue(value: Complex): number {
+function createSamples(config: GraphConfig): number[] {
+  const interval = config.domainEnd - config.domainStart;
+  return Array.from({ length: config.sampleCount }, (_, index) => config.domainStart + (interval * index) / (config.sampleCount - 1));
+}
+
+function toGraphValue(value: number | Complex): number {
+  if (typeof value === 'number') return value;
   return Math.abs(value.im) < COMPLEX_EPSILON ? value.re : abs(value);
 }
 
@@ -70,12 +85,7 @@ function convertAbsoluteBars(expression: string): string {
   const parts = expression.split('|');
   if (parts.length === 1) return expression;
   if (parts.length % 2 === 0) throw new Error('Unbalanced absolute value bars.');
-  return parts.map((part, index) => mapAbsolutePart(part, index, parts.length)).join('');
-}
-
-function mapAbsolutePart(part: string, index: number, totalParts: number): string {
-  if (index === 0 || index === totalParts - 1) return part;
-  return index % 2 === 1 ? `abs(${part})` : part;
+  return parts.map((part, index) => (index === 0 || index === parts.length - 1 ? part : index % 2 === 1 ? `abs(${part})` : part)).join('');
 }
 
 function expandSummation(expression: string): string {
@@ -83,18 +93,16 @@ function expandSummation(expression: string): string {
   if (firstIndex < 0) return expression;
   const parsed = parseSummationAt(expression, firstIndex);
   const expandedTerm = expandSummation(parsed.term);
-  const terms = createSummationTerms(parsed.start, parsed.end, expandedTerm);
-  const expanded = `(${terms.join(' + ')})`;
+  const expanded = `(${Array.from({ length: parsed.end - parsed.start + 1 }, (_, i) => `(${expandedTerm.replace(/\bn\b/g, String(parsed.start + i))})`).join(' + ')})`;
   return expression.slice(0, firstIndex) + expanded + expandSummation(expression.slice(parsed.nextIndex));
 }
 
 function parseSummationAt(expression: string, startIndex: number): ParsedSummation {
   const innerText = readEnclosedText(expression, startIndex + 4);
   const args = splitTopLevelArgs(innerText.content);
-  if (args.length !== 3) throw new Error('sumN requires format: sumN(start,end,expression).');
-  const start = Number(args[0].trim());
-  const end = Number(args[1].trim());
-  validateSummationBounds(start, end);
+  const start = Number(args[0]?.trim());
+  const end = Number(args[1]?.trim());
+  if (args.length !== 3 || !Number.isInteger(start) || !Number.isInteger(end) || end < start) throw new Error('sumN requires integer range: sumN(start,end,expression).');
   return { start, end, term: args[2].trim(), nextIndex: innerText.nextIndex };
 }
 
@@ -125,31 +133,8 @@ function splitTopLevelArgs(content: string): string[] {
   return args;
 }
 
-function createSummationTerms(start: number, end: number, term: string): string[] {
-  return Array.from({ length: end - start + 1 }, (_, offset) => {
-    const termValue = start + offset;
-    return `(${replaceSummationVariable(term, termValue)})`;
-  });
-}
+type ReadResult = { content: string; nextIndex: number };
+type ParsedSummation = { start: number; end: number; term: string; nextIndex: number };
 
-function replaceSummationVariable(term: string, termValue: number): string {
-  return term.replace(/\bn\b/g, String(termValue));
-}
 
-function validateSummationBounds(start: number, end: number): void {
-  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) {
-    throw new Error('sumN requires integer range: sumN(start,end,expression).');
-  }
-}
-
-type ReadResult = {
-  content: string;
-  nextIndex: number;
-};
-
-type ParsedSummation = {
-  start: number;
-  end: number;
-  term: string;
-  nextIndex: number;
-};
+type CompiledExpression = { evaluate(scope: Record<string, Complex>): number | Complex };

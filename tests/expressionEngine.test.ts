@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   generateGraph,
+  generateParametricGraph,
   mapToFrequencies,
   normalizeExpression,
   validateExpression,
@@ -58,6 +59,17 @@ describe('expressionEngine', () => {
     expect(points.length).toBe(64);
     expect(points[0].x).toBe(-2);
     expect(points[63].x).toBe(2);
+  });
+
+
+  it('generates parametric heart-like points', () => {
+    const points = generateParametricGraph('16*sin(t)^3', '13*cos(t)-5*cos(2*t)-2*cos(3*t)-cos(4*t)', {
+      sampleCount: 32,
+      domainStart: 0,
+      domainEnd: 6.283185307,
+    });
+    expect(points.length).toBe(32);
+    expect(Math.max(...points.map((point) => point.y))).toBeGreaterThan(10);
   });
 
   it('maps frequencies to audible range', () => {
