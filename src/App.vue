@@ -17,21 +17,14 @@
         <small class="hint">Heart preset: x=16*sin(t)^3, y=13*cos(t)-5*cos(2*t)-2*cos(3*t)-cos(4*t)</small>
       </template>
       <small class="hint">Supports: |z|, √(), π, ∑(start,end,n), ×, ÷, and all mathjs functions.</small>
-
-      <div class="token-grid">
-        <button v-for="token in quickTokens" :key="token" class="chip" @click="insertToken(token)">{{ token }}</button>
-      </div>
+      <div class="token-grid"><button v-for="token in quickTokens" :key="token" class="chip" @click="insertToken(token)">{{ token }}</button></div>
 
       <div class="parameter-grid">
         <label>Sample count<input v-model.number="sampleCount" type="number" min="16" max="4096" step="1" /></label>
         <label>Domain start<input v-model.number="domainStart" type="number" step="0.5" /></label>
         <label>Domain end<input v-model.number="domainEnd" type="number" step="0.5" /></label>
       </div>
-      <div class="axis-grid">
-        <label><input v-model="showXAxis" type="checkbox" /> Show X axis</label>
-        <label><input v-model="showYAxis" type="checkbox" /> Show Y axis</label>
-      </div>
-
+      <div class="axis-grid"><label><input v-model="showXAxis" type="checkbox" /> Show X axis</label><label><input v-model="showYAxis" type="checkbox" /> Show Y axis</label></div>
       <div class="actions"><button @click="buildGraph">Render Graph</button><button :disabled="points.length === 0" @click="playSound">Play Audio</button></div>
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
     </section>
@@ -39,7 +32,7 @@
     <svg viewBox="0 0 800 320" class="chart" role="img" aria-label="Function graph">
       <line v-if="showXAxis && axis.y !== null" x1="0" :y1="axis.y" x2="800" :y2="axis.y" stroke="#9ca3af" stroke-width="1" />
       <line v-if="showYAxis && axis.x !== null" :x1="axis.x" y1="0" :x2="axis.x" y2="320" stroke="#9ca3af" stroke-width="1" />
-      <polyline :points="svgPoints" fill="none" stroke="#2c7be5" stroke-width="2" />
+      <path :d="svgPath" fill="none" stroke="#2c7be5" stroke-width="2" />
     </svg>
   </main>
 </template>
@@ -66,12 +59,13 @@ const quickTokens = ['sin()', 'cos()', 'tan()', 'sqrt()', '√()', 'log()', 'abs
 const CHART_WIDTH = 800;
 const CHART_HEIGHT = 320;
 const CHART_PADDING = 20;
+const DISCONTINUITY_FACTOR = 0.45;
 
+const validPoints = computed(() => points.value.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)));
 const bounds = computed(() => {
-  const validPoints = points.value.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-  if (!validPoints.length) return null;
-  const xValues = validPoints.map((point) => point.x);
-  const yValues = validPoints.map((point) => point.y);
+  if (!validPoints.value.length) return null;
+  const xValues = validPoints.value.map((point) => point.x);
+  const yValues = validPoints.value.map((point) => point.y);
   return { minX: Math.min(...xValues), maxX: Math.max(...xValues), minY: Math.min(...yValues), maxY: Math.max(...yValues) };
 });
 
@@ -79,27 +73,27 @@ const axis = computed(() => {
   if (!bounds.value) return { x: null, y: null };
   const xSpan = bounds.value.maxX - bounds.value.minX || 1;
   const ySpan = bounds.value.maxY - bounds.value.minY || 1;
-  const drawableWidth = CHART_WIDTH - CHART_PADDING * 2;
-  const drawableHeight = CHART_HEIGHT - CHART_PADDING * 2;
-  const x = CHART_PADDING + ((0 - bounds.value.minX) / xSpan) * drawableWidth;
-  const y = CHART_HEIGHT - CHART_PADDING - ((0 - bounds.value.minY) / ySpan) * drawableHeight;
+  const x = CHART_PADDING + ((0 - bounds.value.minX) / xSpan) * (CHART_WIDTH - CHART_PADDING * 2);
+  const y = CHART_HEIGHT - CHART_PADDING - ((0 - bounds.value.minY) / ySpan) * (CHART_HEIGHT - CHART_PADDING * 2);
   return { x: x >= 0 && x <= CHART_WIDTH ? x : null, y: y >= 0 && y <= CHART_HEIGHT ? y : null };
 });
 
-const svgPoints = computed(() => {
-  if (!points.value.length || !bounds.value) return '';
-  const validPoints = points.value.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-  if (!validPoints.length) return '';
-  const xSpan = bounds.value.maxX - bounds.value.minX || 1;
+const svgPath = computed(() => {
+  if (!bounds.value || !validPoints.value.length) return '';
   const ySpan = bounds.value.maxY - bounds.value.minY || 1;
-  const drawableWidth = CHART_WIDTH - CHART_PADDING * 2;
-  const drawableHeight = CHART_HEIGHT - CHART_PADDING * 2;
-  return validPoints.map((point) => {
-    const x = CHART_PADDING + ((point.x - bounds.value!.minX) / xSpan) * drawableWidth;
-    const y = CHART_HEIGHT - CHART_PADDING - ((point.y - bounds.value!.minY) / ySpan) * drawableHeight;
-    return `${x},${y}`;
-  }).join(' ');
+  return buildSvgPath(validPoints.value, bounds.value, ySpan * DISCONTINUITY_FACTOR);
 });
+
+function buildSvgPath(dataPoints: GraphPoint[], chartBounds: Bounds, jumpLimit: number): string {
+  const xSpan = chartBounds.maxX - chartBounds.minX || 1;
+  const ySpan = chartBounds.maxY - chartBounds.minY || 1;
+  const scaled = dataPoints.map((point) => ({ x: CHART_PADDING + ((point.x - chartBounds.minX) / xSpan) * (CHART_WIDTH - CHART_PADDING * 2), y: CHART_HEIGHT - CHART_PADDING - ((point.y - chartBounds.minY) / ySpan) * (CHART_HEIGHT - CHART_PADDING * 2), rawY: point.y }));
+  return scaled.reduce((path, point, index) => {
+    const previous = scaled[index - 1];
+    const broken = !previous || Math.abs(point.rawY - previous.rawY) > jumpLimit;
+    return `${path}${broken ? ' M' : ' L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`;
+  }, '').trim();
+}
 
 function insertToken(token: string): void {
   const field = expressionField.value;
@@ -121,6 +115,7 @@ function buildGraph(): void {
 }
 
 async function playSound(): Promise<void> { await playFrequencies(mapToFrequencies(points.value)); }
+type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
 </script>
 
 <style scoped>
