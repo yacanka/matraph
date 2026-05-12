@@ -1,20 +1,17 @@
-import { Complex, abs, compile, complex } from 'mathjs';
+import { Complex, compile, complex } from 'mathjs';
 import type { GraphConfig, GraphPoint } from '../types/graph';
 
 const MAX_EXPRESSION_LENGTH = 500;
 const MIN_SAMPLES = 16;
 const MAX_SAMPLES = 4096;
 const COMPLEX_EPSILON = 1e-8;
-const DEFAULT_CONFIG: GraphConfig = {
-  sampleCount: 256,
-  domainStart: -10,
-  domainEnd: 10,
-};
+const DEFAULT_CONFIG: GraphConfig = { sampleCount: 256, domainStart: -10, domainEnd: 10 };
 
 /** Normalize user input into mathjs-compatible syntax. */
 export function normalizeExpression(rawExpression: string): string {
   const trimmed = rawExpression.trim();
-  const withSymbols = trimmed
+  const withTrigPowers = normalizeTrigPowerSyntax(trimmed);
+  const withSymbols = withTrigPowers
     .replaceAll('×', '*').replaceAll('÷', '/').replaceAll('−', '-')
     .replaceAll('π', 'pi').replaceAll('{', '(').replaceAll('}', ')')
     .replaceAll('[', '(').replaceAll(']', ')').replace(/√\s*\(/g, 'sqrt(')
@@ -37,13 +34,24 @@ export function validateGraphConfig(config: GraphConfig): void {
   if (config.domainStart >= config.domainEnd) throw new Error('Domain start must be smaller than domain end.');
 }
 
-/** Build plot points by evaluating expression on the selected domain. */
+/** Build plot points by evaluating y=f(z) on the selected domain. */
 export function generateGraph(expression: string, config?: Partial<GraphConfig>): GraphPoint[] {
   const normalizedExpression = normalizeExpression(expression);
   validateExpression(normalizedExpression);
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
   validateGraphConfig(finalConfig);
-  return buildGraphPoints(compile(normalizedExpression), finalConfig);
+  return buildGraphPoints(compile(normalizedExpression) as CompiledExpression, finalConfig);
+}
+
+/** Build plot points by evaluating parametric x(t), y(t) on the selected domain. */
+export function generateParametricGraph(xExpression: string, yExpression: string, config?: Partial<GraphConfig>): GraphPoint[] {
+  const normalizedX = normalizeExpression(xExpression);
+  const normalizedY = normalizeExpression(yExpression);
+  validateExpression(normalizedX);
+  validateExpression(normalizedY);
+  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+  validateGraphConfig(finalConfig);
+  return buildParametricPoints(compile(normalizedX) as CompiledExpression, compile(normalizedY) as CompiledExpression, finalConfig);
 }
 
 /** Convert graph points to normalized audio frequencies. */
@@ -53,39 +61,88 @@ export function mapToFrequencies(points: GraphPoint[]): number[] {
   return values.map((value) => 220 + (value / maxValue) * 660);
 }
 
-function buildGraphPoints(compiled: ReturnType<typeof compile>, config: GraphConfig): GraphPoint[] {
-  const interval = config.domainEnd - config.domainStart;
-  return Array.from({ length: config.sampleCount }, (_, index) => {
-    const xValue = config.domainStart + (interval * index) / (config.sampleCount - 1);
-    const result = compiled.evaluate({ z: complex(xValue, 0) }) as Complex;
-    return { x: xValue, y: toGraphValue(result) };
+function buildGraphPoints(compiled: CompiledExpression, config: GraphConfig): GraphPoint[] {
+  return createSamples(config).map((sample) => ({ x: sample, y: toGraphValue(compiled.evaluate({ z: complex(sample, 0) }) as Complex) }));
+}
+
+function buildParametricPoints(compiledX: CompiledExpression, compiledY: CompiledExpression, config: GraphConfig): GraphPoint[] {
+  return createSamples(config).map((sample) => {
+    const scope = { t: complex(sample, 0), z: complex(sample, 0) };
+    return { x: toGraphValue(compiledX.evaluate(scope) as Complex), y: toGraphValue(compiledY.evaluate(scope) as Complex) };
   });
 }
 
-function toGraphValue(value: Complex): number {
-  return Math.abs(value.im) < COMPLEX_EPSILON ? value.re : abs(value);
+function createSamples(config: GraphConfig): number[] {
+  const interval = config.domainEnd - config.domainStart;
+  return Array.from({ length: config.sampleCount }, (_, index) => config.domainStart + (interval * index) / (config.sampleCount - 1));
+}
+
+function toGraphValue(value: number | Complex): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
+  if (Math.abs(value.im) >= COMPLEX_EPSILON) return Number.NaN;
+  return Number.isFinite(value.re) ? value.re : Number.NaN;
+}
+
+
+function normalizeTrigPowerSyntax(expression: string): string {
+  const withExplicitArg = expression.replace(/\b(sin|cos|tan)\s*\^\s*(\d+)\s*\(([^()]+)\)/gi, '($1($3))^$2');
+  return withExplicitArg.replace(/\b(sin|cos|tan)\s*\^\s*(\d+)\b/gi, '($1(z))^$2');
 }
 
 function convertAbsoluteBars(expression: string): string {
   const parts = expression.split('|');
   if (parts.length === 1) return expression;
   if (parts.length % 2 === 0) throw new Error('Unbalanced absolute value bars.');
-  return parts.map((part, index) => mapAbsolutePart(part, index, parts.length)).join('');
-}
-
-function mapAbsolutePart(part: string, index: number, totalParts: number): string {
-  if (index === 0 || index === totalParts - 1) return part;
-  return index % 2 === 1 ? `abs(${part})` : part;
+  return parts.map((part, index) => (index === 0 || index === parts.length - 1 ? part : index % 2 === 1 ? `abs(${part})` : part)).join('');
 }
 
 function expandSummation(expression: string): string {
-  const sumPattern = /sumN\(([^,]+),([^,]+),(.+?)\)/;
-  const match = expression.match(sumPattern);
-  if (!match) return expression;
-  const start = Number(match[1].trim());
-  const end = Number(match[2].trim());
-  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) throw new Error('sumN requires integer range: sumN(start,end,expression).');
-  const term = match[3].trim();
-  const expanded = Array.from({ length: end - start + 1 }, (_, i) => `(${term.replaceAll('n', String(start + i))})`).join(' + ');
-  return expression.replace(sumPattern, `(${expanded})`);
+  const firstIndex = expression.indexOf('sumN(');
+  if (firstIndex < 0) return expression;
+  const parsed = parseSummationAt(expression, firstIndex);
+  const expandedTerm = expandSummation(parsed.term);
+  const expanded = `(${Array.from({ length: parsed.end - parsed.start + 1 }, (_, i) => `(${expandedTerm.replace(/\bn\b/g, String(parsed.start + i))})`).join(' + ')})`;
+  return expression.slice(0, firstIndex) + expanded + expandSummation(expression.slice(parsed.nextIndex));
 }
+
+function parseSummationAt(expression: string, startIndex: number): ParsedSummation {
+  const innerText = readEnclosedText(expression, startIndex + 4);
+  const args = splitTopLevelArgs(innerText.content);
+  const start = Number(args[0]?.trim());
+  const end = Number(args[1]?.trim());
+  if (args.length !== 3 || !Number.isInteger(start) || !Number.isInteger(end) || end < start) throw new Error('sumN requires integer range: sumN(start,end,expression).');
+  return { start, end, term: args[2].trim(), nextIndex: innerText.nextIndex };
+}
+
+function readEnclosedText(expression: string, openParenIndex: number): ReadResult {
+  if (expression[openParenIndex] !== '(') throw new Error('sumN requires format: sumN(start,end,expression).');
+  let depth = 1;
+  for (let index = openParenIndex + 1; index < expression.length; index += 1) {
+    if (expression[index] === '(') depth += 1;
+    if (expression[index] === ')') depth -= 1;
+    if (depth === 0) return { content: expression.slice(openParenIndex + 1, index), nextIndex: index + 1 };
+  }
+  throw new Error('sumN has unbalanced parentheses.');
+}
+
+function splitTopLevelArgs(content: string): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let partStart = 0;
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === '(') depth += 1;
+    else if (content[index] === ')') depth -= 1;
+    else if (content[index] === ',' && depth === 0) {
+      args.push(content.slice(partStart, index));
+      partStart = index + 1;
+    }
+  }
+  args.push(content.slice(partStart));
+  return args;
+}
+
+type ReadResult = { content: string; nextIndex: number };
+type ParsedSummation = { start: number; end: number; term: string; nextIndex: number };
+
+
+type CompiledExpression = { evaluate(scope: Record<string, Complex>): number | Complex };
