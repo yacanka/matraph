@@ -10,7 +10,8 @@ const DEFAULT_CONFIG: GraphConfig = { sampleCount: 256, domainStart: -10, domain
 /** Normalize user input into mathjs-compatible syntax. */
 export function normalizeExpression(rawExpression: string): string {
   const trimmed = rawExpression.trim();
-  const withSymbols = trimmed
+  const withTrigPowers = normalizeTrigPowerSyntax(trimmed);
+  const withSymbols = withTrigPowers
     .replaceAll('×', '*').replaceAll('÷', '/').replaceAll('−', '-')
     .replaceAll('π', 'pi').replaceAll('{', '(').replaceAll('}', ')')
     .replaceAll('[', '(').replaceAll(']', ')').replace(/√\s*\(/g, 'sqrt(')
@@ -79,6 +80,12 @@ function createSamples(config: GraphConfig): number[] {
 function toGraphValue(value: number | Complex): number {
   if (typeof value === 'number') return value;
   return Math.abs(value.im) < COMPLEX_EPSILON ? value.re : abs(value);
+}
+
+
+function normalizeTrigPowerSyntax(expression: string): string {
+  const withExplicitArg = expression.replace(/\b(sin|cos|tan)\s*\^\s*(\d+)\s*\(([^()]+)\)/gi, '($1($3))^$2');
+  return withExplicitArg.replace(/\b(sin|cos|tan)\s*\^\s*(\d+)\b/gi, '($1(z))^$2');
 }
 
 function convertAbsoluteBars(expression: string): string {

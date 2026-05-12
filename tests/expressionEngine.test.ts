@@ -18,6 +18,17 @@ describe('expressionEngine', () => {
     expect(result).toBe('abs(sin(z)) + sqrt(z^2) + pi * z / 2');
   });
 
+
+  it('normalizes trigonometric power shorthand', () => {
+    expect(normalizeExpression('sin^2(z) + cos^2(z)')).toBe('(sin(z))^2 + (cos(z))^2');
+    expect(normalizeExpression('sin^2 + cos^2')).toBe('(sin(z))^2 + (cos(z))^2');
+  });
+
+  it('evaluates trig identity to constant one', () => {
+    const points = generateGraph('sin^2 + cos^2', { sampleCount: 16, domainStart: -5, domainEnd: 5 });
+    expect(points.every((point) => Math.abs(point.y - 1) < 1e-8)).toBe(true);
+  });
+
   it('rejects unbalanced absolute bars', () => {
     expect(() => normalizeExpression('|z + 1')).toThrow('Unbalanced absolute value bars.');
   });
