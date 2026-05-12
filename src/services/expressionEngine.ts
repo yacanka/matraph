@@ -1,4 +1,4 @@
-import { Complex, abs, compile, complex } from 'mathjs';
+import { Complex, compile, complex } from 'mathjs';
 import type { GraphConfig, GraphPoint } from '../types/graph';
 
 const MAX_EXPRESSION_LENGTH = 500;
@@ -78,8 +78,9 @@ function createSamples(config: GraphConfig): number[] {
 }
 
 function toGraphValue(value: number | Complex): number {
-  if (typeof value === 'number') return value;
-  return Math.abs(value.im) < COMPLEX_EPSILON ? value.re : abs(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : Number.NaN;
+  if (Math.abs(value.im) >= COMPLEX_EPSILON) return Number.NaN;
+  return Number.isFinite(value.re) ? value.re : Number.NaN;
 }
 
 

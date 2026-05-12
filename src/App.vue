@@ -63,11 +63,15 @@ const showYAxis = ref(true);
 const points = ref<GraphPoint[]>([]);
 const errorMessage = ref('');
 const quickTokens = ['sin()', 'cos()', 'tan()', 'sqrt()', '√()', 'log()', 'abs()', '|z|', '∑(1,5,n)', 'π', '^', '×', '÷', '( )'];
+const CHART_WIDTH = 800;
+const CHART_HEIGHT = 320;
+const CHART_PADDING = 20;
 
 const bounds = computed(() => {
-  if (!points.value.length) return null;
-  const xValues = points.value.map((point) => point.x);
-  const yValues = points.value.map((point) => point.y);
+  const validPoints = points.value.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (!validPoints.length) return null;
+  const xValues = validPoints.map((point) => point.x);
+  const yValues = validPoints.map((point) => point.y);
   return { minX: Math.min(...xValues), maxX: Math.max(...xValues), minY: Math.min(...yValues), maxY: Math.max(...yValues) };
 });
 
@@ -75,18 +79,24 @@ const axis = computed(() => {
   if (!bounds.value) return { x: null, y: null };
   const xSpan = bounds.value.maxX - bounds.value.minX || 1;
   const ySpan = bounds.value.maxY - bounds.value.minY || 1;
-  const x = (0 - bounds.value.minX) / xSpan * 800;
-  const y = 300 - ((0 - bounds.value.minY) / ySpan) * 280;
-  return { x: x >= 0 && x <= 800 ? x : null, y: y >= 0 && y <= 320 ? y : null };
+  const drawableWidth = CHART_WIDTH - CHART_PADDING * 2;
+  const drawableHeight = CHART_HEIGHT - CHART_PADDING * 2;
+  const x = CHART_PADDING + ((0 - bounds.value.minX) / xSpan) * drawableWidth;
+  const y = CHART_HEIGHT - CHART_PADDING - ((0 - bounds.value.minY) / ySpan) * drawableHeight;
+  return { x: x >= 0 && x <= CHART_WIDTH ? x : null, y: y >= 0 && y <= CHART_HEIGHT ? y : null };
 });
 
 const svgPoints = computed(() => {
   if (!points.value.length || !bounds.value) return '';
+  const validPoints = points.value.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (!validPoints.length) return '';
   const xSpan = bounds.value.maxX - bounds.value.minX || 1;
   const ySpan = bounds.value.maxY - bounds.value.minY || 1;
-  return points.value.map((point) => {
-    const x = ((point.x - bounds.value!.minX) / xSpan) * 800;
-    const y = 300 - ((point.y - bounds.value!.minY) / ySpan) * 280;
+  const drawableWidth = CHART_WIDTH - CHART_PADDING * 2;
+  const drawableHeight = CHART_HEIGHT - CHART_PADDING * 2;
+  return validPoints.map((point) => {
+    const x = CHART_PADDING + ((point.x - bounds.value!.minX) / xSpan) * drawableWidth;
+    const y = CHART_HEIGHT - CHART_PADDING - ((point.y - bounds.value!.minY) / ySpan) * drawableHeight;
     return `${x},${y}`;
   }).join(' ');
 });

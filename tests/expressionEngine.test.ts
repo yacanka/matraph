@@ -59,6 +59,13 @@ describe('expressionEngine', () => {
   });
 
 
+
+  it('returns NaN for non-real outputs instead of magnitude distortion', () => {
+    const points = generateGraph('sqrt(z)', { sampleCount: 16, domainStart: -4, domainEnd: 4 });
+    expect(Number.isNaN(points[0].y)).toBe(true);
+    expect(points[15].y).toBeGreaterThanOrEqual(0);
+  });
+
   it('preserves negative values for real-valued expressions', () => {
     const points = generateGraph('sin(z)', { sampleCount: 16, domainStart: -1.5707963, domainEnd: 1.5707963 });
     expect(points[0].y).toBeLessThan(0);
