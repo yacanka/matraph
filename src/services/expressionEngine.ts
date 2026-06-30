@@ -11,7 +11,8 @@ const DEFAULT_CONFIG: GraphConfig = {
   domainStart: -10,
   domainEnd: 10,
 };
-type CompiledExpression = { evaluate: (scope: { z: Complex }) => unknown };
+type CompiledExpression = { evaluate: (scope: { t: Complex; z: Complex }) => unknown };
+type MatrixLike = { toArray: () => unknown };
 
 /** Normalize user input into mathjs-compatible syntax. */
 export function normalizeExpression(rawExpression: string): string {
@@ -56,7 +57,7 @@ function replaceCalculatorSymbols(expression: string): string {
   return expression
     .replaceAll('×', '*').replaceAll('÷', '/').replaceAll('−', '-')
     .replaceAll('π', 'pi').replaceAll('{', '(').replaceAll('}', ')')
-    .replaceAll('[', '(').replaceAll(']', ')').replace(/√\s*\(/g, 'sqrt(')
+    .replace(/√\s*\(/g, 'sqrt(')
     .replace(/√\s*([\w.]+)/g, 'sqrt($1)').replace(/∑\s*\(/g, 'sumN(');
 }
 
@@ -64,15 +65,45 @@ function buildGraphPoints(compiled: CompiledExpression, config: GraphConfig): Gr
   const interval = config.domainEnd - config.domainStart;
   return Array.from({ length: config.sampleCount }, (_, index) => {
     const xValue = config.domainStart + (interval * index) / (config.sampleCount - 1);
-    const result = compiled.evaluate({ z: complex(xValue, 0) });
-    return { x: xValue, y: toGraphValue(result) };
+    const variableValue = complex(xValue, 0);
+    const result = compiled.evaluate({ z: variableValue, t: variableValue });
+    return toGraphPoint(result, xValue);
   });
+}
+
+function toGraphPoint(value: unknown, fallbackX: number): GraphPoint {
+  const vector = toVectorItems(value);
+  if (!vector) return { x: fallbackX, y: toGraphValue(value) };
+  if (vector.length !== 2) throw new Error('Vector expressions must return [x, y].');
+  const xValue = toGraphValue(vector[0]);
+  const yValue = toGraphValue(vector[1]);
+  return { x: xValue ?? fallbackX, y: yValue };
 }
 
 function toGraphValue(value: unknown): number | null {
   if (typeof value === 'number') return toFiniteNumber(value);
   if (isComplex(value)) return complexToGraphValue(value);
   return null;
+}
+
+function toVectorItems(value: unknown): unknown[] | null {
+  const arrayValue = toArrayValue(value);
+  if (!arrayValue) return null;
+  if (arrayValue.length === 1 && Array.isArray(arrayValue[0])) return arrayValue[0] as unknown[];
+  return arrayValue;
+}
+
+function toArrayValue(value: unknown): unknown[] | null {
+  if (Array.isArray(value)) return value;
+  if (isMatrixLike(value)) {
+    const arrayValue = value.toArray();
+    return Array.isArray(arrayValue) ? arrayValue : null;
+  }
+  return null;
+}
+
+function isMatrixLike(value: unknown): value is MatrixLike {
+  return typeof value === 'object' && value !== null && typeof (value as MatrixLike).toArray === 'function';
 }
 
 function complexToGraphValue(value: Complex): number | null {

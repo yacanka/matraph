@@ -4,6 +4,7 @@ export interface ChartView {
   width: number;
   height: number;
   padding: number;
+  zoom: number;
 }
 
 export interface ProjectedGraphPoint extends CoordinatePoint {
@@ -16,13 +17,13 @@ export interface GraphPlot {
   yRange: [number, number];
 }
 
-const DEFAULT_VIEW: ChartView = { width: 800, height: 320, padding: 20 };
+const DEFAULT_VIEW: ChartView = { width: 800, height: 320, padding: 20, zoom: 1 };
 const DISCONTINUITY_RATIO = 0.75;
 
 /** Create a segmented SVG plot that avoids drawing across invalid samples. */
 export function createGraphPlot(points: GraphPoint[], viewConfig?: Partial<ChartView>): GraphPlot {
   const view = { ...DEFAULT_VIEW, ...viewConfig };
-  const yRange = resolveYRange(points);
+  const yRange = applyYZoom(resolveYRange(points), view.zoom);
   const xRange = resolveXRange(points);
   const projectedPoints = projectPoints(points, view, xRange, yRange);
   return { path: createSvgPath(projectedPoints), projectedPoints, yRange };
@@ -33,9 +34,14 @@ export function toCenteredLongestSegment(
   points: ProjectedGraphPoint[],
   origin: CoordinatePoint,
 ): CoordinatePoint[] {
+  return toLongestSegment(points).map((point) => ({ x: point.x - origin.x, y: point.y - origin.y }));
+}
+
+/** Return the longest continuous plotted segment in screen coordinates. */
+export function toLongestSegment(points: ProjectedGraphPoint[]): CoordinatePoint[] {
   const segments = splitSegments(points);
-  const longestSegment = segments.sort((left, right) => right.length - left.length)[0] ?? [];
-  return longestSegment.map((point) => ({ x: point.x - origin.x, y: point.y - origin.y }));
+  return (segments.sort((left, right) => right.length - left.length)[0] ?? [])
+    .map((point) => ({ x: point.x, y: point.y }));
 }
 
 function projectPoints(
@@ -110,6 +116,13 @@ function resolveYRange(points: GraphPoint[]): [number, number] {
   const min = Math.min(...values);
   const max = Math.max(...values);
   return min === max ? [min - 1, max + 1] : [min, max];
+}
+
+function applyYZoom(yRange: [number, number], zoom: number): [number, number] {
+  const normalizedZoom = Number.isFinite(zoom) ? Math.max(0.25, zoom) : 1;
+  const center = (yRange[0] + yRange[1]) / 2;
+  const halfSpan = (yRange[1] - yRange[0]) / (2 * normalizedZoom);
+  return [center - halfSpan, center + halfSpan];
 }
 
 function resolveXRange(points: GraphPoint[]): [number, number] {

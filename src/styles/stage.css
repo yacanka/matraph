@@ -65,13 +65,6 @@
   stroke-width: 3;
 }
 
-.reel-reference {
-  opacity: 0.18;
-  transform: translateX(130px) scaleX(0.62);
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
 .mode-reel .fourier-trace {
   stroke-width: 3.4;
 }

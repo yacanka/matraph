@@ -23,7 +23,6 @@
       <line x1="0" :y1="props.centerY" :x2="props.width" :y2="props.centerY" class="axis-line" />
       <line x1="0" :y1="props.baselineY" :x2="props.width" :y2="props.baselineY" class="dash-line" />
       <path v-if="props.stageMode === 'standard'" :d="props.plotPath" class="graph-path" filter="url(#orange-glow)" />
-      <path v-else :d="props.plotPath" class="graph-path reel-reference" filter="url(#orange-glow)" />
 
       <g v-if="props.isAnimating" class="fourier-layer">
         <circle
@@ -46,7 +45,7 @@
         <line
           v-if="props.stageMode === 'reel' && props.trace.length > 0"
           :x1="lastArmTip.x"
-          :y1="lastArmTip.y"
+          :y1="lastTracePoint.y"
           :x2="lastTracePoint.x"
           :y2="lastTracePoint.y"
           class="reel-connector"

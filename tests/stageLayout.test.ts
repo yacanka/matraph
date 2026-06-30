@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createReelTracePoint, createStageLayout } from '../src/services/stageLayout';
+import { createReelVectorPoints, createStageLayout } from '../src/services/stageLayout';
 
 describe('stageLayout', () => {
   it('keeps standard mode centered', () => {
@@ -10,10 +10,16 @@ describe('stageLayout', () => {
 
   it('moves reel epicycles left and trace to the right', () => {
     const layout = createStageLayout('reel', 800, 320);
-    const tracePoint = createReelTracePoint(layout, { x: 20, y: 140 }, 0.5);
 
-    expect(layout.frameOrigin.x).toBeLessThan(200);
-    expect(tracePoint.x).toBeGreaterThan(450);
-    expect(tracePoint.y).toBe(140);
+    expect(layout.frameOrigin.x).toBe(160);
+    expect(layout.traceStartX).toBeGreaterThan(250);
+  });
+
+  it('keeps reel vector input on the projection axis', () => {
+    const layout = createStageLayout('reel', 800, 320);
+    const points = createReelVectorPoints([{ x: 20, y: 140 }, { x: 80, y: 200 }], layout);
+
+    expect(points.every((point) => point.x === 0)).toBe(true);
+    expect(points[0].y).toBe(-20);
   });
 });

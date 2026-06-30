@@ -1,0 +1,34 @@
+.preset-library {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.preset-categories,
+.preset-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.preset-category,
+.preset-button {
+  padding: 7px 13px;
+}
+
+.preset-category.selected,
+.preset-button.selected {
+  border-color: #ff6a1a;
+  color: #fff3cf;
+  box-shadow: 0 0 18px rgba(255, 106, 26, 0.24);
+}
+
+@media (max-width: 760px) {
+  .preset-library,
+  .preset-categories,
+  .preset-options {
+    justify-items: start;
+    justify-content: flex-start;
+  }
+}

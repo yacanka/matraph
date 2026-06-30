@@ -30,4 +30,12 @@ describe('graphPlotter', () => {
     expect(centered).toHaveLength(2);
     expect(centered[0].x).toBeGreaterThanOrEqual(0);
   });
+
+  it('narrows the visible y range when zoom increases', () => {
+    const points: GraphPoint[] = [{ x: 0, y: -10 }, { x: 1, y: 10 }];
+    const normal = createGraphPlot(points, { width: 100, height: 100, padding: 10, zoom: 1 });
+    const zoomed = createGraphPlot(points, { width: 100, height: 100, padding: 10, zoom: 2 });
+
+    expect(zoomed.yRange[1] - zoomed.yRange[0]).toBeLessThan(normal.yRange[1] - normal.yRange[0]);
+  });
 });

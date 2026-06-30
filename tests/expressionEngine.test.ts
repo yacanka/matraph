@@ -17,6 +17,10 @@ describe('expressionEngine', () => {
     expect(result).toBe('abs(sin(z)) + sqrt(z^2) + pi * z / 2');
   });
 
+  it('preserves vector expression brackets', () => {
+    expect(normalizeExpression('[sin(t), cos(t)]')).toBe('[sin(t), cos(t)]');
+  });
+
   it('rejects unbalanced absolute bars', () => {
     expect(() => normalizeExpression('|z + 1')).toThrow('Unbalanced absolute value bars.');
   });
@@ -52,6 +56,26 @@ describe('expressionEngine', () => {
     expect(points.length).toBe(64);
     expect(points[0].x).toBe(-2);
     expect(points[63].x).toBe(2);
+  });
+
+  it('generates parametric vector graph points with t alias', () => {
+    const points = generateGraph('[sin(t), cos(t)]', { sampleCount: 17, domainStart: 0, domainEnd: Math.PI });
+
+    expect(points[0].x).toBeCloseTo(0);
+    expect(points[0].y).toBeCloseTo(1);
+    expect(points[8].x).toBeCloseTo(1);
+    expect(points[8].y).toBeCloseTo(0);
+  });
+
+  it('generates parametric vector graph points with z alias', () => {
+    const points = generateGraph('[z, z^2]', { sampleCount: 17, domainStart: -1, domainEnd: 1 });
+
+    expect(points[0]).toEqual({ x: -1, y: 1 });
+    expect(points[16]).toEqual({ x: 1, y: 1 });
+  });
+
+  it('rejects vectors that do not return two coordinates', () => {
+    expect(() => generateGraph('[sin(t)]')).toThrow('Vector expressions must return [x, y].');
   });
 
   it('marks non-finite graph values as gaps', () => {
