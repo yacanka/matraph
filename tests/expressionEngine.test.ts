@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   generateGraph,
+  generateGraphRender,
   mapToFrequencies,
   normalizeExpression,
   validateExpression,
@@ -74,8 +75,24 @@ describe('expressionEngine', () => {
     expect(points[16]).toEqual({ x: 1, y: 1 });
   });
 
-  it('rejects vectors that do not return two coordinates', () => {
-    expect(() => generateGraph('[sin(t)]')).toThrow('Vector expressions must return [x, y].');
+  it('accepts one-dimensional vector expressions as scalar series', () => {
+    const render = generateGraphRender('[sin(t)]', { sampleCount: 17, domainStart: 0, domainEnd: Math.PI });
+
+    expect(render.dimensions).toBe(1);
+    expect(render.primarySeries.kind).toBe('scalar');
+    expect(render.points[8].y).toBeCloseTo(1);
+  });
+
+  it('renders vectors with more than two dimensions as multiple scalar series', () => {
+    const render = generateGraphRender('[sin(t), cos(t), sin(2 * t)]', {
+      sampleCount: 17,
+      domainStart: 0,
+      domainEnd: Math.PI,
+    });
+
+    expect(render.dimensions).toBe(3);
+    expect(render.series).toHaveLength(3);
+    expect(render.series[1].points[0].y).toBeCloseTo(1);
   });
 
   it('marks non-finite graph values as gaps', () => {

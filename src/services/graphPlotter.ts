@@ -1,4 +1,4 @@
-import type { CoordinatePoint, GraphPoint } from '../types/graph';
+import type { CoordinatePoint, GraphPoint, GraphSeries } from '../types/graph';
 
 export interface ChartView {
   width: number;
@@ -11,7 +11,14 @@ export interface ProjectedGraphPoint extends CoordinatePoint {
   connected: boolean;
 }
 
+export interface GraphPlotPath {
+  id: string;
+  d: string;
+  primary: boolean;
+}
+
 export interface GraphPlot {
+  paths: GraphPlotPath[];
   path: string;
   projectedPoints: ProjectedGraphPoint[];
   yRange: [number, number];
@@ -21,12 +28,15 @@ const DEFAULT_VIEW: ChartView = { width: 800, height: 320, padding: 20, zoom: 1 
 const DISCONTINUITY_RATIO = 0.75;
 
 /** Create a segmented SVG plot that avoids drawing across invalid samples. */
-export function createGraphPlot(points: GraphPoint[], viewConfig?: Partial<ChartView>): GraphPlot {
+export function createGraphPlot(input: GraphPoint[] | GraphSeries[], viewConfig?: Partial<ChartView>): GraphPlot {
   const view = { ...DEFAULT_VIEW, ...viewConfig };
-  const yRange = applyYZoom(resolveYRange(points), view.zoom);
-  const xRange = resolveXRange(points);
-  const projectedPoints = projectPoints(points, view, xRange, yRange);
-  return { path: createSvgPath(projectedPoints), projectedPoints, yRange };
+  const series = normalizeSeries(input);
+  const allPoints = series.flatMap((entry) => entry.points);
+  const yRange = applyYZoom(resolveYRange(allPoints), view.zoom);
+  const xRange = resolveXRange(allPoints);
+  const projectedSeries = series.map((entry) => projectSeries(entry, view, xRange, yRange));
+  const paths = projectedSeries.map((entry, index) => ({ id: entry.id, d: createSvgPath(entry.points), primary: index === 0 }));
+  return { path: paths[0]?.d ?? '', paths, projectedPoints: projectedSeries[0]?.points ?? [], yRange };
 }
 
 /** Return the longest continuous plotted segment centered around an origin. */
@@ -54,6 +64,25 @@ function projectPoints(
     if (point.y === null || !Number.isFinite(point.y)) return [];
     return [projectPoint(point, index, points, view, xRange, yRange)];
   });
+}
+
+function normalizeSeries(input: GraphPoint[] | GraphSeries[]): GraphSeries[] {
+  if (input.length === 0) return [];
+  if (isGraphSeries(input[0])) return input as GraphSeries[];
+  return [{ id: 'primary', kind: 'scalar', label: 'y', points: input as GraphPoint[] }];
+}
+
+function isGraphSeries(value: GraphPoint | GraphSeries): value is GraphSeries {
+  return 'points' in value;
+}
+
+function projectSeries(
+  series: GraphSeries,
+  view: ChartView,
+  xRange: [number, number],
+  yRange: [number, number],
+): { id: string; points: ProjectedGraphPoint[] } {
+  return { id: series.id, points: projectPoints(series.points, view, xRange, yRange) };
 }
 
 function projectPoint(

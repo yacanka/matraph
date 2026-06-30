@@ -22,7 +22,13 @@
       <rect :width="props.width" :height="props.height" fill="url(#grid-lines)" class="grid-plane" />
       <line x1="0" :y1="props.centerY" :x2="props.width" :y2="props.centerY" class="axis-line" />
       <line x1="0" :y1="props.baselineY" :x2="props.width" :y2="props.baselineY" class="dash-line" />
-      <path v-if="props.stageMode === 'standard'" :d="props.plotPath" class="graph-path" filter="url(#orange-glow)" />
+      <path
+        v-for="path in visiblePlotPaths"
+        :key="path.id"
+        :class="['graph-path', { secondary: !path.primary }]"
+        :d="path.d"
+        filter="url(#orange-glow)"
+      />
 
       <g v-if="props.isAnimating" class="fourier-layer">
         <circle
@@ -61,6 +67,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { FourierArm } from '../services/fourierEngine';
+import type { GraphPlotPath } from '../services/graphPlotter';
 import type { StageMode } from '../services/stageLayout';
 import type { CoordinatePoint } from '../types/graph';
 
@@ -72,7 +79,7 @@ interface StagePanelProps {
   expression: string;
   height: number;
   isAnimating: boolean;
-  plotPath: string;
+  plotPaths: GraphPlotPath[];
   sampleCount: number;
   stageMode: StageMode;
   trace: CoordinatePoint[];
@@ -80,6 +87,7 @@ interface StagePanelProps {
 }
 
 const props = defineProps<StagePanelProps>();
+const visiblePlotPaths = computed(() => props.stageMode === 'standard' ? props.plotPaths : []);
 const tracePath = computed(() => toSvgPath(props.trace));
 const lastTracePoint = computed(() => props.trace.at(-1) ?? { x: 0, y: 0 });
 const lastArmTip = computed(() => props.arms.at(-1)?.end ?? { x: 0, y: 0 });

@@ -27,7 +27,7 @@
       v-model:sample-count="sampleCount"
       :can-animate="plot.projectedPoints.length >= 2"
       :error-message="errorMessage"
-      :has-points="points.length > 0"
+      :has-points="plot.projectedPoints.length > 0"
       :is-animating="isFourierAnimating"
       :stage-mode="stageMode"
       @animate="startFourierAnimation"
@@ -46,7 +46,7 @@
       :expression="expression"
       :height="CHART_HEIGHT"
       :is-animating="isFourierAnimating"
-      :plot-path="plot.path"
+      :plot-paths="plot.paths"
       :sample-count="sampleCount"
       :stage-mode="stageMode"
       :trace="fourierTrace"
@@ -79,7 +79,7 @@ import type { FormulaCategory, FormulaPreset } from './services/formulaPresets';
 import { expressionGraphEngine } from './services/graphEngine';
 import { createGraphPlot } from './services/graphPlotter';
 import type { StageMode } from './services/stageLayout';
-import type { GraphPoint } from './types/graph';
+import type { GraphRender } from './types/graph';
 
 const CHART_WIDTH = 800;
 const CHART_HEIGHT = 320;
@@ -97,13 +97,13 @@ const fourierSpeed = ref(1);
 const graphZoom = ref(1);
 const referenceFrequency = ref(440);
 const audioScale = ref<AudioScale>('free');
-const points = ref<GraphPoint[]>([]);
+const graph = ref<GraphRender | null>(null);
 const errorMessage = ref('');
 const activePresetId = ref(defaultPreset.id);
 const activeCategory = ref<FormulaCategory>(defaultPreset.category);
 const stageMode = ref<StageMode>('standard');
 
-const plot = computed(() => createGraphPlot(points.value, {
+const plot = computed(() => createGraphPlot(graph.value?.series ?? [], {
   width: CHART_WIDTH,
   height: CHART_HEIGHT,
   zoom: graphZoom.value,
@@ -142,7 +142,7 @@ function buildGraph(): void {
   try {
     playback.stop();
     errorMessage.value = '';
-    points.value = expressionGraphEngine.render({
+    graph.value = expressionGraphEngine.render({
       expression: expression.value,
       config: {
         sampleCount: sampleCount.value,

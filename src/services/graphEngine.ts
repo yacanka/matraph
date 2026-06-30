@@ -1,5 +1,5 @@
-import { generateGraph } from './expressionEngine';
-import type { GraphConfig, GraphPoint } from '../types/graph';
+import { generateGraphRender } from './expressionEngine';
+import type { GraphConfig, GraphRender } from '../types/graph';
 
 export interface GraphEngineInput {
   expression: string;
@@ -7,12 +7,12 @@ export interface GraphEngineInput {
 }
 
 export interface GraphEngine {
-  /** Render expression input into graph points for plot and playback consumers. */
-  render(input: GraphEngineInput): GraphPoint[];
+  /** Render expression input into graph series for plot and playback consumers. */
+  render(input: GraphEngineInput): GraphRender;
 }
 
 export const expressionGraphEngine: GraphEngine = {
-  render(input: GraphEngineInput): GraphPoint[] {
-    return generateGraph(input.expression, input.config);
+  render(input: GraphEngineInput): GraphRender {
+    return generateGraphRender(input.expression, input.config);
   },
 };

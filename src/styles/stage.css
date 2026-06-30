@@ -65,6 +65,12 @@
   stroke-width: 3;
 }
 
+.graph-path.secondary {
+  opacity: 0.46;
+  stroke: #67d7c4;
+  stroke-width: 1.8;
+}
+
 .mode-reel .fourier-trace {
   stroke-width: 3.4;
 }

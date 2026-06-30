@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGraphPlot, toCenteredLongestSegment } from '../src/services/graphPlotter';
-import type { GraphPoint } from '../src/types/graph';
+import type { GraphPoint, GraphSeries } from '../src/types/graph';
 
 describe('graphPlotter', () => {
   it('does not emit invalid SVG coordinates for graph gaps', () => {
@@ -37,5 +37,18 @@ describe('graphPlotter', () => {
     const zoomed = createGraphPlot(points, { width: 100, height: 100, padding: 10, zoom: 2 });
 
     expect(zoomed.yRange[1] - zoomed.yRange[0]).toBeLessThan(normal.yRange[1] - normal.yRange[0]);
+  });
+
+  it('creates separate paths for multiple graph series', () => {
+    const series: GraphSeries[] = [
+      { id: 'a', kind: 'scalar', label: 'a', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+      { id: 'b', kind: 'scalar', label: 'b', points: [{ x: 0, y: 1 }, { x: 1, y: 0 }] },
+    ];
+
+    const plot = createGraphPlot(series, { width: 100, height: 100, padding: 10 });
+
+    expect(plot.paths).toHaveLength(2);
+    expect(plot.paths[0].primary).toBe(true);
+    expect(plot.paths[1].primary).toBe(false);
   });
 });

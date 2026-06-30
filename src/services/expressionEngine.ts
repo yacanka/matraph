@@ -1,6 +1,7 @@
 import { abs, compile, complex, isComplex } from 'mathjs';
 import type { Complex } from 'mathjs';
-import type { GraphConfig, GraphPoint } from '../types/graph';
+import { normalizeExpression } from './expressionNormalizer';
+import type { GraphConfig, GraphPoint, GraphRender, GraphSeries } from '../types/graph';
 
 const MAX_EXPRESSION_LENGTH = 500;
 const MIN_SAMPLES = 16;
@@ -13,12 +14,13 @@ const DEFAULT_CONFIG: GraphConfig = {
 };
 type CompiledExpression = { evaluate: (scope: { t: Complex; z: Complex }) => unknown };
 type MatrixLike = { toArray: () => unknown };
-
-/** Normalize user input into mathjs-compatible syntax. */
-export function normalizeExpression(rawExpression: string): string {
-  const withSymbols = replaceCalculatorSymbols(rawExpression.trim());
-  return expandSummation(convertAbsoluteBars(withSymbols));
+interface EvaluationSample {
+  domainX: number;
+  values: unknown[];
+  vector: boolean;
 }
+
+export { normalizeExpression };
 
 /** Validate expression and reject unsafe patterns. */
 export function validateExpression(expression: string): void {
@@ -37,12 +39,17 @@ export function validateGraphConfig(config: GraphConfig): void {
 
 /** Build plot points by evaluating expression on the selected domain. */
 export function generateGraph(expression: string, config?: Partial<GraphConfig>): GraphPoint[] {
+  return generateGraphRender(expression, config).points;
+}
+
+/** Build graph series by evaluating scalar, parametric, or vector expressions. */
+export function generateGraphRender(expression: string, config?: Partial<GraphConfig>): GraphRender {
   const normalizedExpression = normalizeExpression(expression);
   validateExpression(normalizedExpression);
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
   validateGraphConfig(finalConfig);
   const compiled = compile(normalizedExpression) as CompiledExpression;
-  return rejectEmptyGraph(buildGraphPoints(compiled, finalConfig));
+  return rejectEmptyRender(buildGraphRender(normalizedExpression, buildSamples(compiled, finalConfig)));
 }
 
 /** Convert graph points to normalized audio frequencies. */
@@ -53,37 +60,34 @@ export function mapToFrequencies(points: GraphPoint[]): number[] {
   return values.map((value) => 220 + (value / maxValue) * 660);
 }
 
-function replaceCalculatorSymbols(expression: string): string {
-  return expression
-    .replaceAll('×', '*').replaceAll('÷', '/').replaceAll('−', '-')
-    .replaceAll('π', 'pi').replaceAll('{', '(').replaceAll('}', ')')
-    .replace(/√\s*\(/g, 'sqrt(')
-    .replace(/√\s*([\w.]+)/g, 'sqrt($1)').replace(/∑\s*\(/g, 'sumN(');
-}
-
-function buildGraphPoints(compiled: CompiledExpression, config: GraphConfig): GraphPoint[] {
+function buildSamples(compiled: CompiledExpression, config: GraphConfig): EvaluationSample[] {
   const interval = config.domainEnd - config.domainStart;
   return Array.from({ length: config.sampleCount }, (_, index) => {
     const xValue = config.domainStart + (interval * index) / (config.sampleCount - 1);
     const variableValue = complex(xValue, 0);
     const result = compiled.evaluate({ z: variableValue, t: variableValue });
-    return toGraphPoint(result, xValue);
+    return { domainX: xValue, values: toValueList(result), vector: isVectorResult(result) };
   });
 }
 
-function toGraphPoint(value: unknown, fallbackX: number): GraphPoint {
-  const vector = toVectorItems(value);
-  if (!vector) return { x: fallbackX, y: toGraphValue(value) };
-  if (vector.length !== 2) throw new Error('Vector expressions must return [x, y].');
-  const xValue = toGraphValue(vector[0]);
-  const yValue = toGraphValue(vector[1]);
-  return { x: xValue ?? fallbackX, y: yValue };
+function buildGraphRender(expression: string, samples: EvaluationSample[]): GraphRender {
+  const dimensions = resolveDimensions(samples);
+  const series = buildSeries(samples, dimensions);
+  return { dimensions, expression, points: series[0].points, primarySeries: series[0], series };
 }
 
 function toGraphValue(value: unknown): number | null {
   if (typeof value === 'number') return toFiniteNumber(value);
   if (isComplex(value)) return complexToGraphValue(value);
   return null;
+}
+
+function toValueList(value: unknown): unknown[] {
+  return toVectorItems(value) ?? [value];
+}
+
+function isVectorResult(value: unknown): boolean {
+  return toVectorItems(value) !== null;
 }
 
 function toVectorItems(value: unknown): unknown[] | null {
@@ -115,74 +119,51 @@ function toFiniteNumber(value: number): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function rejectEmptyGraph(points: GraphPoint[]): GraphPoint[] {
-  if (finiteYValues(points).length > 0) return points;
+function resolveDimensions(samples: EvaluationSample[]): number {
+  const firstVector = samples.find((sample) => sample.vector);
+  if (!firstVector) return 1;
+  const dimensions = firstVector.values.length;
+  if (dimensions < 1) throw new Error('Vector expressions must return at least one coordinate.');
+  if (samples.some((sample) => sample.vector !== firstVector.vector || sample.values.length !== dimensions)) {
+    throw new Error('Vector expression dimensions must stay consistent.');
+  }
+  return dimensions;
+}
+
+function buildSeries(samples: EvaluationSample[], dimensions: number): GraphSeries[] {
+  if (dimensions === 2) return [buildParametricSeries(samples)];
+  return Array.from({ length: dimensions }, (_, index) => buildScalarSeries(samples, index));
+}
+
+function buildParametricSeries(samples: EvaluationSample[]): GraphSeries {
+  return {
+    id: 'parametric-xy',
+    kind: 'parametric',
+    label: 'x,y',
+    points: samples.map((sample) => toParametricPoint(sample)),
+  };
+}
+
+function buildScalarSeries(samples: EvaluationSample[], dimensionIndex: number): GraphSeries {
+  return {
+    id: `scalar-${dimensionIndex}`,
+    kind: 'scalar',
+    label: dimensionIndex === 0 ? 'y' : `y${dimensionIndex + 1}`,
+    points: samples.map((sample) => ({ x: sample.domainX, y: toGraphValue(sample.values[dimensionIndex]) })),
+  };
+}
+
+function toParametricPoint(sample: EvaluationSample): GraphPoint {
+  const xValue = toGraphValue(sample.values[0]);
+  const yValue = toGraphValue(sample.values[1]);
+  return { x: xValue ?? sample.domainX, y: yValue };
+}
+
+function rejectEmptyRender(render: GraphRender): GraphRender {
+  if (render.series.some((series) => finiteYValues(series.points).length > 0)) return render;
   throw new Error('Expression did not produce finite graph values.');
 }
 
 function finiteYValues(points: GraphPoint[]): number[] {
   return points.flatMap((point) => point.y === null || !Number.isFinite(point.y) ? [] : [point.y]);
-}
-
-function convertAbsoluteBars(expression: string): string {
-  const parts = expression.split('|');
-  if (parts.length === 1) return expression;
-  if (parts.length % 2 === 0) throw new Error('Unbalanced absolute value bars.');
-  return parts.map((part, index) => mapAbsolutePart(part, index, parts.length)).join('');
-}
-
-function mapAbsolutePart(part: string, index: number, totalParts: number): string {
-  if (index === 0 || index === totalParts - 1) return part;
-  return index % 2 === 1 ? `abs(${part})` : part;
-}
-
-function expandSummation(expression: string): string {
-  const startIndex = expression.indexOf('sumN(');
-  if (startIndex === -1) return expression;
-  const openIndex = startIndex + 'sumN'.length;
-  const closeIndex = findMatchingClose(expression, openIndex);
-  const args = splitTopLevelArgs(expression.slice(openIndex + 1, closeIndex));
-  const expanded = expandSummationArgs(args);
-  const nextExpression = `${expression.slice(0, startIndex)}${expanded}${expression.slice(closeIndex + 1)}`;
-  return expandSummation(nextExpression);
-}
-
-function expandSummationArgs(args: string[]): string {
-  if (args.length !== 3) throw new Error('sumN requires arguments: sumN(start,end,expression).');
-  const start = Number(args[0].trim());
-  const end = Number(args[1].trim());
-  if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) throw new Error('sumN requires integer range: sumN(start,end,expression).');
-  return `(${buildSummationTerms(args[2].trim(), start, end)})`;
-}
-
-function buildSummationTerms(term: string, start: number, end: number): string {
-  return Array.from({ length: end - start + 1 }, (_, index) => {
-    const currentValue = String(start + index);
-    return `(${term.replace(/\bn\b/g, currentValue)})`;
-  }).join(' + ');
-}
-
-function findMatchingClose(expression: string, openIndex: number): number {
-  let depth = 0;
-  for (let index = openIndex; index < expression.length; index += 1) {
-    if (expression[index] === '(') depth += 1;
-    if (expression[index] === ')') depth -= 1;
-    if (depth === 0) return index;
-  }
-  throw new Error('Unbalanced sumN parentheses.');
-}
-
-function splitTopLevelArgs(args: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === '(') depth += 1;
-    if (args[index] === ')') depth -= 1;
-    if (args[index] === ',' && depth === 0) {
-      parts.push(args.slice(start, index));
-      start = index + 1;
-    }
-  }
-  return [...parts, args.slice(start)];
 }
