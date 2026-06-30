@@ -1,98 +1,107 @@
 <template>
-  <main class="container">
-    <h1>Matraph (Vue 3)</h1>
-    <p class="description">Complex expression editörü ile fonksiyonları hızlıca oluşturup görselleştirin.</p>
-
-    <section class="panel">
-      <label for="expression">Expression (variable: z)</label>
-      <textarea
-        id="expression"
-        ref="expressionField"
-        v-model="expression"
-        rows="4"
-        placeholder="Example: |sin(z)| + sqrt(z^2 + 1) / (3 + cos(z))"
-      />
-      <small class="hint">Supports: |z|, √(), π, ∑(start,end,n), ×, ÷, and all mathjs functions.</small>
-
-      <div class="token-grid">
-        <button v-for="token in quickTokens" :key="token" class="chip" @click="insertToken(token)">{{ token }}</button>
+  <main class="app-shell">
+    <header class="top-bar">
+      <div>
+        <p class="eyebrow">Fourier Series</p>
+        <h1>Matraph</h1>
       </div>
 
-      <div class="parameter-grid">
-        <label>Sample count<input v-model.number="sampleCount" type="number" min="16" max="4096" step="1" /></label>
-        <label>Domain start<input v-model.number="domainStart" type="number" step="0.5" /></label>
-        <label>Domain end<input v-model.number="domainEnd" type="number" step="0.5" /></label>
-        <label>Fourier vectors<input v-model.number="fourierVectorCount" type="number" min="1" max="128" step="1" /></label>
-        <label>Fourier speed<input v-model.number="fourierSpeed" type="number" min="0.25" max="4" step="0.25" /></label>
-      </div>
+      <nav class="preset-row" aria-label="Formula presets">
+        <button
+          v-for="preset in FORMULA_PRESETS"
+          :key="preset.id"
+          class="preset-button"
+          :class="{ selected: preset.id === activePresetId }"
+          type="button"
+          @click="applyPreset(preset)"
+        >
+          {{ preset.label }}
+        </button>
+      </nav>
+    </header>
 
-      <div class="actions">
-        <button @click="buildGraph">Render Graph</button>
-        <button :disabled="points.length === 0" @click="playSound">Play Audio</button>
-        <button :disabled="plot.projectedPoints.length < 2" @click="startFourierAnimation">Animate Fourier</button>
-        <button :disabled="!isFourierAnimating" @click="stopFourierAnimation">Stop</button>
-      </div>
-      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-    </section>
+    <ControlPanel
+      v-model:domain-end="domainEnd"
+      v-model:domain-start="domainStart"
+      v-model:expression="expression"
+      v-model:fourier-speed="fourierSpeed"
+      v-model:fourier-vector-count="fourierVectorCount"
+      v-model:sample-count="sampleCount"
+      :can-animate="plot.projectedPoints.length >= 2"
+      :error-message="errorMessage"
+      :has-points="points.length > 0"
+      :is-animating="isFourierAnimating"
+      @animate="startFourierAnimation"
+      @audio="playSound"
+      @custom-expression="markCustomExpression"
+      @render="buildGraph"
+      @stop="stopFourierAnimation"
+    />
 
-    <svg :viewBox="`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`" class="chart" role="img" aria-label="Function graph">
-      <path :d="plot.path" class="graph-path" />
-      <g v-if="isFourierAnimating" class="fourier-layer">
-        <circle v-for="(arm, index) in fourierArms" :key="`circle-${index}`" :cx="arm.start.x" :cy="arm.start.y" :r="arm.radius" class="fourier-circle" />
-        <line v-for="(arm, index) in fourierArms" :key="`arm-${index}`" :x1="arm.start.x" :y1="arm.start.y" :x2="arm.end.x" :y2="arm.end.y" class="fourier-arm" />
-        <path :d="fourierTracePath" class="fourier-trace" />
-      </g>
-    </svg>
+    <StagePanel
+      :active-label="activeFormulaLabel"
+      :arms="fourierArms"
+      :baseline-y="REFERENCE_BASELINE_Y"
+      :center-y="CHART_CENTER.y"
+      :expression="expression"
+      :height="CHART_HEIGHT"
+      :is-animating="isFourierAnimating"
+      :plot-path="plot.path"
+      :sample-count="sampleCount"
+      :trace="fourierTrace"
+      :width="CHART_WIDTH"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
-import { buildFourierVectors, createFourierFrame } from './services/fourierEngine';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import ControlPanel from './components/ControlPanel.vue';
+import StagePanel from './components/StagePanel.vue';
 import { playFrequencies } from './services/audioEngine';
 import { generateGraph, mapToFrequencies } from './services/expressionEngine';
+import { buildFourierVectors, createFourierFrame } from './services/fourierEngine';
+import type { FourierArm, FourierVector } from './services/fourierEngine';
+import { findFormulaPreset, FORMULA_PRESETS, getDefaultFormulaPreset } from './services/formulaPresets';
+import type { FormulaPreset } from './services/formulaPresets';
 import { createGraphPlot, toCenteredLongestSegment } from './services/graphPlotter';
 import type { CoordinatePoint, GraphPoint } from './types/graph';
-import type { FourierArm, FourierVector } from './services/fourierEngine';
 
 const CHART_WIDTH = 800;
 const CHART_HEIGHT = 320;
 const CHART_CENTER = { x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2 };
+const REFERENCE_BASELINE_Y = CHART_CENTER.y + 44;
 const FOURIER_DURATION_MS = 8000;
 const FOURIER_TRACE_LIMIT = 640;
-const expression = ref('sin(z) + z^2 / 5');
-const expressionField = ref<HTMLTextAreaElement | null>(null);
-const sampleCount = ref(256);
-const domainStart = ref(-10);
-const domainEnd = ref(10);
-const fourierVectorCount = ref(48);
+const defaultPreset = getDefaultFormulaPreset();
+const expression = ref(defaultPreset.expression);
+const sampleCount = ref(defaultPreset.sampleCount);
+const domainStart = ref(defaultPreset.domainStart);
+const domainEnd = ref(defaultPreset.domainEnd);
+const fourierVectorCount = ref(defaultPreset.vectorCount);
 const fourierSpeed = ref(1);
 const points = ref<GraphPoint[]>([]);
 const errorMessage = ref('');
+const activePresetId = ref(defaultPreset.id);
 const isFourierAnimating = ref(false);
 const fourierVectors = ref<FourierVector[]>([]);
 const fourierArms = ref<FourierArm[]>([]);
 const fourierTrace = ref<CoordinatePoint[]>([]);
-const quickTokens = ['sin()', 'cos()', 'tan()', 'sqrt()', '√()', 'log()', 'abs()', '|z|', '∑(1,5,n)', 'π', '^', '×', '÷', '( )'];
 let animationFrameId: number | null = null;
 let animationStartMs = 0;
 let previousFourierProgress = 0;
 
 const plot = computed(() => createGraphPlot(points.value, { width: CHART_WIDTH, height: CHART_HEIGHT }));
-const fourierTracePath = computed(() => toSvgPath(fourierTrace.value));
+const activeFormulaLabel = computed(() => findFormulaPreset(activePresetId.value)?.label ?? 'Custom Function');
 
-function insertToken(token: string): void {
-  const field = expressionField.value;
-  if (!field) return;
-  const start = field.selectionStart;
-  const end = field.selectionEnd;
-  const snippet = token === '( )' ? '()' : token;
-  expression.value = `${expression.value.slice(0, start)}${snippet}${expression.value.slice(end)}`;
-  nextTick(() => {
-    field.focus();
-    const cursor = token.endsWith('()') || token === '( )' ? start + snippet.length - 1 : start + snippet.length;
-    field.setSelectionRange(cursor, cursor);
-  });
+function applyPreset(preset: FormulaPreset): void {
+  activePresetId.value = preset.id;
+  expression.value = preset.expression;
+  sampleCount.value = preset.sampleCount;
+  domainStart.value = preset.domainStart;
+  domainEnd.value = preset.domainEnd;
+  fourierVectorCount.value = preset.vectorCount;
+  buildGraph();
 }
 
 function buildGraph(): void {
@@ -162,33 +171,10 @@ function resetFourierAnimation(): void {
   previousFourierProgress = 0;
 }
 
-function toSvgPath(sourcePoints: CoordinatePoint[]): string {
-  return sourcePoints.map((point, index) => {
-    const command = index === 0 ? 'M' : 'L';
-    return `${command} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
-  }).join(' ');
+function markCustomExpression(): void {
+  activePresetId.value = 'custom';
 }
 
+onMounted(buildGraph);
 onBeforeUnmount(stopFourierAnimation);
 </script>
-
-<style scoped>
-.container { max-width: 940px; margin: 32px auto; font-family: Arial, sans-serif; }
-.description { margin-bottom: 14px; color: #4b5563; }
-.panel { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
-textarea, input { width: 100%; padding: 8px; margin-top: 6px; box-sizing: border-box; }
-textarea { resize: vertical; min-height: 88px; }
-.hint { display: block; color: #6b7280; margin-top: 6px; }
-.token-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.chip { font-size: 12px; padding: 4px 8px; }
-.parameter-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 12px; }
-.actions { margin-top: 14px; display: flex; gap: 8px; }
-button { padding: 8px 14px; }
-.chart { width: 100%; border: 1px solid #ddd; margin-top: 16px; min-height: 320px; }
-.graph-path { fill: none; stroke: #2c7be5; stroke-width: 2; }
-.fourier-circle { fill: none; stroke: rgba(17, 24, 39, 0.22); stroke-width: 1; }
-.fourier-arm { stroke: #111827; stroke-width: 1; }
-.fourier-trace { fill: none; stroke: #e11d48; stroke-width: 2; }
-.error { color: #c0392b; margin-top: 8px; }
-@media (max-width: 760px) { .parameter-grid { grid-template-columns: 1fr; } }
-</style>

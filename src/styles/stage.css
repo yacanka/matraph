@@ -1,0 +1,96 @@
+.stage-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #2e231b;
+  border-radius: 8px;
+  background: #070503;
+}
+
+.stage-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.sample-pill {
+  border: 1px solid #4f3724;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #67d7c4;
+  font-size: 13px;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 2;
+  height: auto;
+  margin-top: 14px;
+  border: 1px solid #211a15;
+  border-radius: 8px;
+}
+
+.chart-bg {
+  fill: #020202;
+}
+
+.grid-plane {
+  opacity: 0.52;
+}
+
+.grid-line {
+  fill: none;
+  stroke: #191919;
+  stroke-width: 1;
+}
+
+.axis-line {
+  stroke: #262626;
+  stroke-width: 1;
+}
+
+.dash-line {
+  stroke: #6c6c6c;
+  stroke-dasharray: 5 6;
+  stroke-width: 1;
+}
+
+.graph-path,
+.fourier-trace {
+  fill: none;
+  stroke: #ff6a1a;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.fourier-circle {
+  fill: none;
+  stroke: rgba(255, 150, 54, 0.6);
+  stroke-width: 1.4;
+}
+
+.fourier-arm {
+  stroke: rgba(246, 216, 137, 0.72);
+  stroke-width: 1.2;
+}
+
+.formula-readout {
+  margin: 14px 0 0;
+  color: #ff8a3d;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .stage-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sample-pill {
+    align-self: flex-start;
+  }
+}

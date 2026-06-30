@@ -1,0 +1,87 @@
+<template>
+  <section class="control-panel">
+    <label class="expression-field" for="expression">
+      <span>Expression</span>
+      <textarea
+        id="expression"
+        ref="expressionField"
+        v-model="expression"
+        rows="4"
+        placeholder="Example: abs(sin(z)) + z^2 / 5"
+        @input="markCustom"
+      />
+    </label>
+
+    <div class="token-grid">
+      <button v-for="token in quickTokens" :key="token" class="chip" type="button" @click="insertToken(token)">
+        {{ token }}
+      </button>
+    </div>
+
+    <div class="parameter-grid">
+      <label>Samples<input v-model.number="sampleCount" type="number" min="16" max="4096" step="1" /></label>
+      <label>Domain Start<input v-model.number="domainStart" type="number" step="0.5" /></label>
+      <label>Domain End<input v-model.number="domainEnd" type="number" step="0.5" /></label>
+      <label>Vectors<input v-model.number="fourierVectorCount" type="number" min="1" max="128" step="1" /></label>
+      <label>Speed<input v-model.number="fourierSpeed" type="number" min="0.25" max="4" step="0.25" /></label>
+    </div>
+
+    <div class="actions">
+      <button type="button" @click="emit('render')">Render</button>
+      <button type="button" :disabled="!props.hasPoints" @click="emit('audio')">Audio</button>
+      <button type="button" :disabled="!props.canAnimate" @click="emit('animate')">Animate</button>
+      <button type="button" :disabled="!props.isAnimating" @click="emit('stop')">Stop</button>
+    </div>
+
+    <p v-if="props.errorMessage" class="error">{{ props.errorMessage }}</p>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { nextTick, ref } from 'vue';
+
+interface ControlPanelProps {
+  canAnimate: boolean;
+  errorMessage: string;
+  hasPoints: boolean;
+  isAnimating: boolean;
+}
+
+const props = defineProps<ControlPanelProps>();
+const emit = defineEmits<{
+  animate: [];
+  audio: [];
+  customExpression: [];
+  render: [];
+  stop: [];
+}>();
+const expression = defineModel<string>('expression', { required: true });
+const sampleCount = defineModel<number>('sampleCount', { required: true });
+const domainStart = defineModel<number>('domainStart', { required: true });
+const domainEnd = defineModel<number>('domainEnd', { required: true });
+const fourierVectorCount = defineModel<number>('fourierVectorCount', { required: true });
+const fourierSpeed = defineModel<number>('fourierSpeed', { required: true });
+const expressionField = ref<HTMLTextAreaElement | null>(null);
+const quickTokens = ['sin()', 'cos()', 'tan()', 'sqrt()', '√()', 'log()', 'abs()', '|z|', '∑(1,5,n)', 'π', '^', '×', '÷', '( )'];
+
+function insertToken(token: string): void {
+  const field = expressionField.value;
+  if (!field) return;
+  const start = field.selectionStart;
+  const end = field.selectionEnd;
+  const snippet = token === '( )' ? '()' : token;
+  expression.value = `${expression.value.slice(0, start)}${snippet}${expression.value.slice(end)}`;
+  markCustom();
+  nextTick(() => placeCursor(field, token, snippet, start));
+}
+
+function markCustom(): void {
+  emit('customExpression');
+}
+
+function placeCursor(field: HTMLTextAreaElement, token: string, snippet: string, start: number): void {
+  field.focus();
+  const cursor = token.endsWith('()') || token === '( )' ? start + snippet.length - 1 : start + snippet.length;
+  field.setSelectionRange(cursor, cursor);
+}
+</script>

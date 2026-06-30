@@ -1,0 +1,62 @@
+.control-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #2e231b;
+  border-radius: 8px;
+  background: #070503;
+}
+
+.expression-field span,
+.parameter-grid label {
+  color: #cba15a;
+  font-size: 13px;
+}
+
+textarea,
+input {
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid #3a2a1f;
+  border-radius: 6px;
+  color: #ffe4ad;
+  background: #020202;
+}
+
+textarea {
+  min-height: 92px;
+  padding: 10px;
+  resize: vertical;
+}
+
+input {
+  min-height: 38px;
+  padding: 8px;
+}
+
+.chip {
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.parameter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.actions button {
+  padding: 8px 16px;
+}
+
+.error {
+  margin: 0;
+  color: #ff7a7a;
+}
+
+@media (max-width: 760px) {
+  .parameter-grid {
+    grid-template-columns: 1fr;
+  }
+}
