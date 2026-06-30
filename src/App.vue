@@ -31,9 +31,11 @@
       :error-message="errorMessage"
       :has-points="points.length > 0"
       :is-animating="isFourierAnimating"
+      :stage-mode="stageMode"
       @animate="startFourierAnimation"
       @audio="playSound"
       @custom-expression="markCustomExpression"
+      @mode-change="setStageMode"
       @render="buildGraph"
       @stop="stopFourierAnimation"
     />
@@ -48,6 +50,7 @@
       :is-animating="isFourierAnimating"
       :plot-path="plot.path"
       :sample-count="sampleCount"
+      :stage-mode="stageMode"
       :trace="fourierTrace"
       :width="CHART_WIDTH"
     />
@@ -65,6 +68,8 @@ import type { FourierArm, FourierVector } from './services/fourierEngine';
 import { findFormulaPreset, FORMULA_PRESETS, getDefaultFormulaPreset } from './services/formulaPresets';
 import type { FormulaPreset } from './services/formulaPresets';
 import { createGraphPlot, toCenteredLongestSegment } from './services/graphPlotter';
+import { createReelTracePoint, createStageLayout } from './services/stageLayout';
+import type { StageMode } from './services/stageLayout';
 import type { CoordinatePoint, GraphPoint } from './types/graph';
 
 const CHART_WIDTH = 800;
@@ -83,6 +88,7 @@ const fourierSpeed = ref(1);
 const points = ref<GraphPoint[]>([]);
 const errorMessage = ref('');
 const activePresetId = ref(defaultPreset.id);
+const stageMode = ref<StageMode>('standard');
 const isFourierAnimating = ref(false);
 const fourierVectors = ref<FourierVector[]>([]);
 const fourierArms = ref<FourierArm[]>([]);
@@ -157,8 +163,10 @@ function calculateFourierProgress(timestamp: number): number {
 }
 
 function renderFourierFrame(progress: number): void {
-  const frame = createFourierFrame(fourierVectors.value, progress, CHART_CENTER);
-  const trace = progress < previousFourierProgress ? [frame.tip] : [...fourierTrace.value, frame.tip];
+  const layout = createStageLayout(stageMode.value, CHART_WIDTH, CHART_HEIGHT);
+  const frame = createFourierFrame(fourierVectors.value, progress, layout.frameOrigin);
+  const tracePoint = createTracePoint(frame.tip, progress, layout);
+  const trace = progress < previousFourierProgress ? [tracePoint] : [...fourierTrace.value, tracePoint];
   fourierArms.value = frame.arms;
   fourierTrace.value = trace.slice(-FOURIER_TRACE_LIMIT);
 }
@@ -173,6 +181,16 @@ function resetFourierAnimation(): void {
 
 function markCustomExpression(): void {
   activePresetId.value = 'custom';
+}
+
+function setStageMode(mode: StageMode): void {
+  stageMode.value = mode;
+  if (isFourierAnimating.value) startFourierAnimation();
+}
+
+function createTracePoint(tip: CoordinatePoint, progress: number, layout: ReturnType<typeof createStageLayout>): CoordinatePoint {
+  if (stageMode.value === 'reel') return createReelTracePoint(layout, tip, progress);
+  return tip;
 }
 
 onMounted(buildGraph);

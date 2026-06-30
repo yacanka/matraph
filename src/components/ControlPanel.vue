@@ -26,6 +26,19 @@
       <label>Speed<input v-model.number="fourierSpeed" type="number" min="0.25" max="4" step="0.25" /></label>
     </div>
 
+    <div class="mode-row" aria-label="Stage mode">
+      <button
+        v-for="option in modeOptions"
+        :key="option.value"
+        class="mode-button"
+        :class="{ selected: option.value === props.stageMode }"
+        type="button"
+        @click="emit('modeChange', option.value)"
+      >
+        {{ option.label }}
+      </button>
+    </div>
+
     <div class="actions">
       <button type="button" @click="emit('render')">Render</button>
       <button type="button" :disabled="!props.hasPoints" @click="emit('audio')">Audio</button>
@@ -39,12 +52,14 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import type { StageMode } from '../services/stageLayout';
 
 interface ControlPanelProps {
   canAnimate: boolean;
   errorMessage: string;
   hasPoints: boolean;
   isAnimating: boolean;
+  stageMode: StageMode;
 }
 
 const props = defineProps<ControlPanelProps>();
@@ -52,6 +67,7 @@ const emit = defineEmits<{
   animate: [];
   audio: [];
   customExpression: [];
+  modeChange: [mode: StageMode];
   render: [];
   stop: [];
 }>();
@@ -63,6 +79,10 @@ const fourierVectorCount = defineModel<number>('fourierVectorCount', { required:
 const fourierSpeed = defineModel<number>('fourierSpeed', { required: true });
 const expressionField = ref<HTMLTextAreaElement | null>(null);
 const quickTokens = ['sin()', 'cos()', 'tan()', 'sqrt()', '√()', 'log()', 'abs()', '|z|', '∑(1,5,n)', 'π', '^', '×', '÷', '( )'];
+const modeOptions: Array<{ label: string; value: StageMode }> = [
+  { label: 'Graph', value: 'standard' },
+  { label: 'Reel', value: 'reel' },
+];
 
 function insertToken(token: string): void {
   const field = expressionField.value;

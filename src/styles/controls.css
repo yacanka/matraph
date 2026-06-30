@@ -50,6 +50,23 @@ input {
   padding: 8px 16px;
 }
 
+.mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mode-button {
+  min-width: 78px;
+  padding: 7px 12px;
+}
+
+.mode-button.selected {
+  border-color: #67d7c4;
+  color: #dffff9;
+  box-shadow: 0 0 16px rgba(103, 215, 196, 0.2);
+}
+
 .error {
   margin: 0;
   color: #ff7a7a;

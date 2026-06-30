@@ -1,5 +1,5 @@
 <template>
-  <section class="stage-panel" aria-label="Function drawing">
+  <section class="stage-panel" :class="`mode-${props.stageMode}`" aria-label="Function drawing">
     <header class="stage-header">
       <div>
         <p class="eyebrow">Active Series</p>
@@ -22,7 +22,8 @@
       <rect :width="props.width" :height="props.height" fill="url(#grid-lines)" class="grid-plane" />
       <line x1="0" :y1="props.centerY" :x2="props.width" :y2="props.centerY" class="axis-line" />
       <line x1="0" :y1="props.baselineY" :x2="props.width" :y2="props.baselineY" class="dash-line" />
-      <path :d="props.plotPath" class="graph-path" filter="url(#orange-glow)" />
+      <path v-if="props.stageMode === 'standard'" :d="props.plotPath" class="graph-path" filter="url(#orange-glow)" />
+      <path v-else :d="props.plotPath" class="graph-path reel-reference" filter="url(#orange-glow)" />
 
       <g v-if="props.isAnimating" class="fourier-layer">
         <circle
@@ -42,6 +43,14 @@
           :y2="arm.end.y"
           class="fourier-arm"
         />
+        <line
+          v-if="props.stageMode === 'reel' && props.trace.length > 0"
+          :x1="lastArmTip.x"
+          :y1="lastArmTip.y"
+          :x2="lastTracePoint.x"
+          :y2="lastTracePoint.y"
+          class="reel-connector"
+        />
         <path :d="tracePath" class="fourier-trace" filter="url(#orange-glow)" />
       </g>
     </svg>
@@ -53,6 +62,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { FourierArm } from '../services/fourierEngine';
+import type { StageMode } from '../services/stageLayout';
 import type { CoordinatePoint } from '../types/graph';
 
 interface StagePanelProps {
@@ -65,12 +75,15 @@ interface StagePanelProps {
   isAnimating: boolean;
   plotPath: string;
   sampleCount: number;
+  stageMode: StageMode;
   trace: CoordinatePoint[];
   width: number;
 }
 
 const props = defineProps<StagePanelProps>();
 const tracePath = computed(() => toSvgPath(props.trace));
+const lastTracePoint = computed(() => props.trace.at(-1) ?? { x: 0, y: 0 });
+const lastArmTip = computed(() => props.arms.at(-1)?.end ?? { x: 0, y: 0 });
 
 function toSvgPath(sourcePoints: CoordinatePoint[]): string {
   return sourcePoints.map((point, index) => {

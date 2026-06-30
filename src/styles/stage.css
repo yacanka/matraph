@@ -65,6 +65,17 @@
   stroke-width: 3;
 }
 
+.reel-reference {
+  opacity: 0.18;
+  transform: translateX(130px) scaleX(0.62);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.mode-reel .fourier-trace {
+  stroke-width: 3.4;
+}
+
 .fourier-circle {
   fill: none;
   stroke: rgba(255, 150, 54, 0.6);
@@ -74,6 +85,12 @@
 .fourier-arm {
   stroke: rgba(246, 216, 137, 0.72);
   stroke-width: 1.2;
+}
+
+.reel-connector {
+  stroke: rgba(246, 216, 137, 0.55);
+  stroke-dasharray: 6 7;
+  stroke-width: 1.1;
 }
 
 .formula-readout {
